@@ -12,7 +12,7 @@ A tool for generating AI images that runs entirely on your local device.
 
 ```bash
 cargo build --release
-./target/release/si
+./target/release/si --help
 ```
 
 ## About
