@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
-use hf_hub::api::tokio::Api;
+
 use log::debug;
 
 use crate::models::ModelManager;
 
-mod models;
+pub mod models;
 
 #[derive(Parser)]
 #[command(name = "si")]
@@ -100,21 +100,6 @@ enum ImageCommands {
 async fn main() -> Result<()> {
     env_logger::init();
 
-    let hf = Api::new().context("Failed to create HuggingFace client")?;
-    let model = hf.model(String::from("openai/clip-vit-base-patch32"));
-    let info = model
-        .info()
-        .await
-        .context("Failed to download model from HuggingFace")?;
-    for file in info.siblings {
-        println!("downloading file: {}...", file.rfilename);
-        model
-            .download(&file.rfilename)
-            .await
-            .context(format!("Failed to download file: {}", file.rfilename))?;
-        println!("   done");
-    }
-
     let cli = Cli::parse();
 
     match cli.command {
@@ -203,4 +188,127 @@ fn handle_image_command(action: ImageCommands) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
+
+    #[test]
+    fn test_handle_config_show() {
+        let action = ConfigCommands::Show;
+        let result = handle_config_command(action);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_config_set() {
+        let action = ConfigCommands::Set {
+            key: "test_key".to_string(),
+            value: "test_value".to_string(),
+        };
+        let result = handle_config_command(action);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_config_get() {
+        let action = ConfigCommands::Get {
+            key: "test_key".to_string(),
+        };
+        let result = handle_config_command(action);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_config_reset() {
+        let action = ConfigCommands::Reset;
+        let result = handle_config_command(action);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_handle_image_generate() {
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("input.jpg");
+        let output_path = temp_dir.path().join("output.png");
+
+        let action = ImageCommands::Generate {
+            prompt: "A beautiful sunset".to_string(),
+            model: "test-model".to_string(),
+            input: input_path,
+            output: output_path,
+        };
+
+        let result = handle_image_command(action);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_cli_parsing() {
+        // Test that the CLI can be parsed (this tests the derive macros)
+        use clap::CommandFactory;
+        let _cmd = Cli::command();
+    }
+
+    #[test]
+    fn test_model_commands_variants() {
+        // Test all ModelCommands variants can be created
+        let _list = ModelCommands::List;
+        let _download = ModelCommands::Download {
+            name: "test".to_string(),
+        };
+        let _delete = ModelCommands::Delete {
+            name: "test".to_string(),
+        };
+        let _show = ModelCommands::Show {
+            name: "test".to_string(),
+        };
+    }
+
+    #[test]
+    fn test_config_commands_variants() {
+        // Test all ConfigCommands variants can be created
+        let _show = ConfigCommands::Show;
+        let _set = ConfigCommands::Set {
+            key: "key".to_string(),
+            value: "value".to_string(),
+        };
+        let _get = ConfigCommands::Get {
+            key: "key".to_string(),
+        };
+        let _reset = ConfigCommands::Reset;
+    }
+
+    #[test]
+    fn test_image_commands_variants() {
+        // Test all ImageCommands variants can be created
+        let _generate = ImageCommands::Generate {
+            prompt: "test".to_string(),
+            model: "model".to_string(),
+            input: PathBuf::from("input.jpg"),
+            output: PathBuf::from("output.png"),
+        };
+    }
+
+    #[test]
+    fn test_commands_variants() {
+        // Test all Commands variants can be created
+        let _model = Commands::Model {
+            action: ModelCommands::List,
+        };
+        let _config = Commands::Config {
+            action: ConfigCommands::Show,
+        };
+        let _image = Commands::Image {
+            action: ImageCommands::Generate {
+                prompt: "test".to_string(),
+                model: "model".to_string(),
+                input: PathBuf::from("input.jpg"),
+                output: PathBuf::from("output.png"),
+            },
+        };
+    }
 }

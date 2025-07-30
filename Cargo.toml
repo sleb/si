@@ -3,6 +3,14 @@ name = "si"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "si"
+path = "src/lib.rs"
+
+[[bin]]
+name = "si"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0.98"
 chrono = { version = "0.4.41", features = ["serde"] }
@@ -18,3 +26,10 @@ reqwest = { version = "0.12.22", features = ["json", "stream"] }
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.141"
 tokio = { version = "1.47.0", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3.8.1"
+tokio-test = "0.4.3"
+mockall = "0.12.1"
+assert_fs = "1.1.1"
+predicates = "3.0.4"

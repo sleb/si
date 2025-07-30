@@ -1,0 +1,45 @@
+[config]
+# Run tests with coverage
+run-types = ["Tests", "Doctests"]
+
+# Include all source files
+include-tests = true
+
+# Output formats
+out = ["Html", "Xml", "Json"]
+
+# Exclude certain patterns from coverage (removed due to workspace requirement)
+# exclude = ["*/tests/*", "*/examples/*", "*/benches/*"]
+
+# Follow child processes
+follow-exec = true
+
+# Count hits per line
+count = true
+
+# Ignore panics
+ignore-panics = true
+
+# Skip clean for faster runs in CI
+skip-clean = false
+
+# Timeout for tests
+timeout = "120s"
+
+# Minimum coverage threshold (80%)
+fail-under = 80
+
+# Enable verbose output
+verbose = true
+
+# Include documentation tests
+doc-tests = true
+
+# Coverage for all features
+all-features = true
+
+# Target directories
+target-dir = "target/tarpaulin"
+
+# Post test hook
+post-test-hook = "echo 'Coverage report generated successfully'"
