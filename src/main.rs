@@ -1,13 +1,10 @@
-use std::path::PathBuf;
+use std::{fmt::Debug, path::PathBuf};
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, Subcommand};
 
 use log::debug;
-
-use crate::models::ModelManager;
-
-pub mod models;
+use si::ModelManager;
 
 #[derive(Parser)]
 #[command(name = "si")]
@@ -107,6 +104,7 @@ async fn main() -> Result<()> {
         Commands::Config { action } => handle_config_command(action),
         Commands::Image { action } => handle_image_command(action),
     }
+    .log_error()
 }
 
 async fn handle_model_command(action: ModelCommands) -> Result<()> {
@@ -115,7 +113,12 @@ async fn handle_model_command(action: ModelCommands) -> Result<()> {
         ModelCommands::List => {
             let models = model_manager
                 .list_models()
-                .map_err(|e| anyhow::anyhow!("Failed to list models: {}", e))?;
+                .context("Failed to list models")?;
+
+            if models.is_empty() {
+                println!("No models available.");
+                return Ok(());
+            }
 
             for model in models {
                 println!("Model: {}", model.model_id);
@@ -188,6 +191,16 @@ fn handle_image_command(action: ImageCommands) -> Result<()> {
         }
     }
     Ok(())
+}
+
+trait LogError<T> {
+    fn log_error(self) -> Self;
+}
+
+impl<T, E: Debug> LogError<T> for Result<T, E> {
+    fn log_error(self) -> Self {
+        self.inspect_err(|e| debug!("{:?}", e))
+    }
 }
 
 #[cfg(test)]

@@ -116,8 +116,10 @@ fn test_model_list_no_models() {
 
     let output = cmd.output().expect("Failed to execute command");
 
-    // Should fail because there's no model index
-    assert!(!output.status.success());
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("No models"))
 }
 
 #[test]

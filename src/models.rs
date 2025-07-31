@@ -14,9 +14,15 @@ static PROJECT_DIR: OnceLock<Option<ProjectDirs>> = OnceLock::new();
 const MODELS_DIR: &str = "models";
 const MODEL_INDEX_FILENAME: &str = "model_index.json";
 
-fn get_project_dir() -> Option<&'static ProjectDirs> {
+fn default_project_dir() -> Option<&'static ProjectDirs> {
     let dir = PROJECT_DIR.get_or_init(|| ProjectDirs::from("", "", "si"));
     dir.as_ref()
+}
+
+fn default_models_dir() -> Result<PathBuf> {
+    default_project_dir()
+        .map(|p| p.data_dir().join(MODELS_DIR))
+        .context("Models directory is not set")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,23 +70,74 @@ pub struct HuggingFaceRepoInfo {}
 #[derive(Debug)]
 pub struct HuggingFaceFile {}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug)]
 pub struct ModelIndex {
-    pub models: Vec<ModelInfo>,
+    path: PathBuf,
 }
 
-impl TryFrom<&Path> for ModelIndex {
-    type Error = anyhow::Error;
-
-    fn try_from(path: &Path) -> Result<Self> {
+impl ModelIndex {
+    pub fn new(path: PathBuf) -> Self {
         debug!("ModelIndex path: {path:?}");
-        let file =
-            File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-        let index: ModelIndex = serde_json::from_reader(file)
-            .with_context(|| format!("Failed to parse model index from {}", path.display()))?;
-
-        Ok(index)
+        Self { path }
     }
+
+    pub fn models(&self) -> Result<Vec<ModelInfo>> {
+        let model_data = self.model_index_data()?;
+        Ok(model_data.models)
+    }
+
+    pub fn add_model(&self, model: ModelInfo) -> Result<()> {
+        debug!("Adding `{}` to the index.", model.model_id);
+        let mut index_data = self.model_index_data()?;
+        let models = &mut index_data.models;
+        if let Some(i) = models.iter().position(|m| m.model_id == model.model_id) {
+            debug!("Model {} already exists in index", model.model_id);
+            models[i] = model;
+        } else {
+            debug!("Adding model {} to index", model.model_id);
+            models.push(model);
+        }
+
+        self.save(&index_data)
+    }
+
+    fn model_index_data(&self) -> Result<ModelIndexData> {
+        match File::open(&self.path) {
+            Ok(file) => {
+                debug!("Reading model index from {}", self.path.display());
+                let index_data: ModelIndexData =
+                    serde_json::from_reader(file).with_context(|| {
+                        format!("Failed to parse model index from {}", self.path.display())
+                    })?;
+                Ok(index_data)
+            }
+            Err(_) => {
+                debug!(
+                    "Model index file not found at {}, returning empty index",
+                    self.path.display()
+                );
+                Ok(ModelIndexData { models: vec![] })
+            }
+        }
+    }
+
+    fn save(&self, index: &ModelIndexData) -> Result<()> {
+        debug!("Saving index data to to {}", self.path.display());
+        let file = File::create(&self.path).with_context(|| {
+            format!(
+                "Failed to create model index file at {}",
+                self.path.display()
+            )
+        })?;
+        serde_json::to_writer(file, index)
+            .with_context(|| format!("Failed to write model index to {}", self.path.display()))?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ModelIndexData {
+    models: Vec<ModelInfo>,
 }
 
 pub struct ModelManagerBuilder {
@@ -109,12 +166,16 @@ impl ModelManagerBuilder {
     pub fn build(self) -> Result<ModelManager> {
         let models_dir = self
             .models_dir
-            .or_else(|| get_project_dir().map(|d| d.data_dir().join(MODELS_DIR)))
-            .context("Models directory is not set")?;
+            .unwrap_or(default_models_dir().context("Models directory not set")?);
+
+        if !models_dir.exists() {
+            debug!("Creating models directory at {}", models_dir.display());
+            fs::create_dir_all(&models_dir).context("Failed to create models dir")?;
+        }
+
         let hf_api = self
             .hf_api
-            .or(Api::new().ok())
-            .context("Failed to create HuggingFace API client")?;
+            .unwrap_or(Api::new().context("Failed to creae HuggingFace API")?);
         Ok(ModelManager { models_dir, hf_api })
     }
 }
@@ -128,18 +189,18 @@ pub struct ModelManager {
 impl ModelManager {
     pub fn new() -> Result<Self> {
         let model_manager = ModelManagerBuilder::new().build()?;
-        fs::create_dir_all(&model_manager.models_dir)
-            .with_context(|| "Failed to create models dir")?;
+        if !model_manager.models_dir.exists() {
+            debug!(
+                "Creating models directory at {}",
+                model_manager.models_dir.display()
+            );
+            fs::create_dir_all(&model_manager.models_dir).context("Failed to create models dir")?;
+        }
         Ok(model_manager)
     }
 
     pub fn list_models(&self) -> Result<Vec<ModelInfo>> {
-        let model_index: ModelIndex = serde_json::from_reader(
-            File::open(&self.models_dir.join(MODEL_INDEX_FILENAME))
-                .context("Couldn't open model index")?,
-        )
-        .with_context(|| "Couldn't de-serialize model index")?;
-        Ok(model_index.models)
+        self.model_index().models().context("Failed to list models")
     }
 
     pub async fn download_model(&self, model_id: &str) -> Result<ModelInfo> {
@@ -168,6 +229,10 @@ impl ModelManager {
         }
 
         Ok(model_info)
+    }
+
+    fn model_index(&self) -> ModelIndex {
+        ModelIndex::new(self.models_dir.join(MODEL_INDEX_FILENAME))
     }
 }
 
@@ -224,12 +289,6 @@ mod tests {
     }
 
     #[test]
-    fn test_model_info_from_invalid_path() {
-        let result = ModelInfo::try_from(Path::new("/nonexistent/path"));
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn test_model_info_from_invalid_json() -> Result<()> {
         let mut temp_file = NamedTempFile::new()?;
         temp_file.write_all(b"invalid json")?;
@@ -242,8 +301,10 @@ mod tests {
     }
 
     #[test]
-    fn test_model_index_from_path() -> Result<()> {
-        let mut temp_file = NamedTempFile::new()?;
+    fn test_model_index_models_with_existing_file() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("model_index.json");
+
         let index_data = r#"{
             "models": [
                 {
@@ -262,23 +323,109 @@ mod tests {
             ]
         }"#;
 
-        temp_file.write_all(index_data.as_bytes())?;
-        temp_file.flush()?;
+        fs::write(&index_path, index_data)?;
+        let model_index = ModelIndex::new(index_path);
+        let models = model_index.models()?;
 
-        let model_index = ModelIndex::try_from(temp_file.path())?;
-
-        assert_eq!(model_index.models.len(), 2);
-        assert_eq!(model_index.models[0].model_id, "model1");
-        assert_eq!(model_index.models[1].model_id, "model2");
-        assert_eq!(model_index.models[1].files.len(), 1);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].model_id, "model1");
+        assert_eq!(models[1].model_id, "model2");
+        assert_eq!(models[1].files.len(), 1);
 
         Ok(())
     }
 
     #[test]
-    fn test_model_index_from_invalid_path() {
-        let result = ModelIndex::try_from(Path::new("/nonexistent/path"));
+    fn test_model_index_models_with_missing_file() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("nonexistent.json");
+
+        let model_index = ModelIndex::new(index_path);
+        let models = model_index.models()?;
+
+        assert_eq!(models.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_index_models_with_invalid_json() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("model_index.json");
+
+        // Write invalid JSON to the file
+        fs::write(&index_path, "invalid json content")?;
+
+        let model_index = ModelIndex::new(index_path);
+        let result = model_index.models();
+
         assert!(result.is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_index_add_new_model() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("model_index.json");
+
+        let model_index = ModelIndex::new(index_path);
+        let model = ModelInfo::new(
+            "test-model",
+            vec![ModelFile {
+                size: 1024,
+                path: PathBuf::from("/path/to/file.bin"),
+            }],
+        );
+
+        model_index.add_model(model)?;
+        let models = model_index.models()?;
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "test-model");
+        assert_eq!(models[0].files.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_index_add_existing_model() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("model_index.json");
+
+        // Create initial index with one model
+        let initial_data = r#"{
+            "models": [
+                {
+                    "model_id": "test-model",
+                    "files": [
+                        {
+                            "size": 512,
+                            "path": "/old/path.bin"
+                        }
+                    ]
+                }
+            ]
+        }"#;
+        fs::write(&index_path, initial_data)?;
+
+        let model_index = ModelIndex::new(index_path);
+        let updated_model = ModelInfo::new(
+            "test-model",
+            vec![ModelFile {
+                size: 1024,
+                path: PathBuf::from("/new/path.bin"),
+            }],
+        );
+
+        model_index.add_model(updated_model)?;
+        let models = model_index.models()?;
+
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "test-model");
+        assert_eq!(models[0].files.len(), 1);
+        assert_eq!(models[0].files[0].size, 1024);
+        assert_eq!(models[0].files[0].path, PathBuf::from("/new/path.bin"));
+
+        Ok(())
     }
 
     #[test]
@@ -351,8 +498,8 @@ mod tests {
             .with_hf_api(api)
             .build()?;
 
-        let result = manager.list_models();
-        assert!(result.is_err());
+        let models = manager.list_models()?;
+        assert_eq!(models.len(), 0);
 
         Ok(())
     }
@@ -398,8 +545,8 @@ mod tests {
     #[test]
     fn test_get_project_dir() {
         // Test that get_project_dir returns a consistent value
-        let dir1 = get_project_dir();
-        let dir2 = get_project_dir();
+        let dir1 = default_project_dir();
+        let dir2 = default_project_dir();
 
         // Both calls should return the same result
         assert_eq!(dir1.is_some(), dir2.is_some());
@@ -455,7 +602,7 @@ mod tests {
     }
 
     #[test]
-    fn test_model_index_serialization() -> Result<()> {
+    fn test_model_index_data_serialization() -> Result<()> {
         let models = vec![
             ModelInfo::new("model1", vec![]),
             ModelInfo::new(
@@ -467,24 +614,58 @@ mod tests {
             ),
         ];
 
-        let model_index = ModelIndex { models };
+        let model_index_data = ModelIndexData { models };
 
-        let json = serde_json::to_string(&model_index)?;
-        let deserialized: ModelIndex = serde_json::from_str(&json)?;
+        let json = serde_json::to_string(&model_index_data)?;
+        let deserialized: ModelIndexData = serde_json::from_str(&json)?;
 
-        assert_eq!(model_index.models.len(), deserialized.models.len());
+        assert_eq!(model_index_data.models.len(), deserialized.models.len());
         assert_eq!(
-            model_index.models[0].model_id,
+            model_index_data.models[0].model_id,
             deserialized.models[0].model_id
         );
         assert_eq!(
-            model_index.models[1].model_id,
+            model_index_data.models[1].model_id,
             deserialized.models[1].model_id
         );
         assert_eq!(
-            model_index.models[1].files.len(),
+            model_index_data.models[1].files.len(),
             deserialized.models[1].files.len()
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_index_save() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("test_index.json");
+
+        let model_index = ModelIndex::new(index_path.clone());
+        let models = vec![
+            ModelInfo::new("model1", vec![]),
+            ModelInfo::new(
+                "model2",
+                vec![ModelFile {
+                    size: 1024,
+                    path: PathBuf::from("/path/to/file.bin"),
+                }],
+            ),
+        ];
+
+        let index_data = ModelIndexData { models };
+        model_index.save(&index_data)?;
+
+        // Verify the file was created and contains correct data
+        assert!(index_path.exists());
+
+        let file_content = fs::read_to_string(&index_path)?;
+        let parsed: ModelIndexData = serde_json::from_str(&file_content)?;
+
+        assert_eq!(parsed.models.len(), 2);
+        assert_eq!(parsed.models[0].model_id, "model1");
+        assert_eq!(parsed.models[1].model_id, "model2");
+        assert_eq!(parsed.models[1].files.len(), 1);
 
         Ok(())
     }

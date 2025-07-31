@@ -31,9 +31,8 @@ async fn test_model_manager_list_with_empty_index() -> Result<()> {
 
     // Create an empty model index
     let index_path = models_dir.join("model_index.json");
-    let empty_index = ModelIndex { models: vec![] };
-    let index_json = serde_json::to_string_pretty(&empty_index)?;
-    fs::write(&index_path, index_json)?;
+    let empty_index_data = r#"{"models": []}"#;
+    fs::write(&index_path, empty_index_data)?;
 
     if let Ok(manager) = ModelManagerBuilder::new()
         .with_models_dir(models_dir)
@@ -54,34 +53,33 @@ async fn test_model_manager_list_with_populated_index() -> Result<()> {
 
     // Create a populated model index
     let index_path = models_dir.join("model_index.json");
-    let test_models = vec![
-        ModelInfo::new(
-            "test-model-1",
-            vec![ModelFile {
-                size: 1024,
-                path: models_dir.join("test-model-1").join("model.bin"),
-            }],
-        ),
-        ModelInfo::new(
-            "test-model-2",
-            vec![
-                ModelFile {
-                    size: 2048,
-                    path: models_dir.join("test-model-2").join("model.bin"),
-                },
-                ModelFile {
-                    size: 512,
-                    path: models_dir.join("test-model-2").join("config.json"),
-                },
-            ],
-        ),
-    ];
-
-    let index = ModelIndex {
-        models: test_models,
-    };
-    let index_json = serde_json::to_string_pretty(&index)?;
-    fs::write(&index_path, index_json)?;
+    let index_data = r#"{
+        "models": [
+            {
+                "model_id": "test-model-1",
+                "files": [
+                    {
+                        "size": 1024,
+                        "path": "/path/to/model.bin"
+                    }
+                ]
+            },
+            {
+                "model_id": "test-model-2",
+                "files": [
+                    {
+                        "size": 2048,
+                        "path": "/path/to/model2.bin"
+                    },
+                    {
+                        "size": 512,
+                        "path": "/path/to/config.json"
+                    }
+                ]
+            }
+        ]
+    }"#;
+    fs::write(&index_path, index_data)?;
 
     if let Ok(manager) = ModelManagerBuilder::new()
         .with_models_dir(models_dir)
@@ -114,6 +112,25 @@ async fn test_model_manager_list_with_malformed_index() -> Result<()> {
     {
         let result = manager.list_models();
         assert!(result.is_err());
+    }
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_model_manager_list_with_missing_index() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let models_dir = temp_dir.path().join("models");
+    fs::create_dir_all(&models_dir)?;
+
+    // Don't create any index file
+
+    if let Ok(manager) = ModelManagerBuilder::new()
+        .with_models_dir(models_dir)
+        .build()
+    {
+        let models = manager.list_models()?;
+        assert_eq!(models.len(), 0); // Should return empty list for missing index
     }
 
     Ok(())
@@ -157,43 +174,85 @@ fn test_model_info_persistence() -> Result<()> {
 }
 
 #[test]
-fn test_model_index_persistence() -> Result<()> {
+fn test_model_index_operations() -> Result<()> {
     let temp_dir = tempdir()?;
     let index_file_path = temp_dir.path().join("model_index.json");
 
-    let original_index = ModelIndex {
-        models: vec![
-            ModelInfo::new("model1", vec![]),
-            ModelInfo::new(
-                "model2",
-                vec![ModelFile {
-                    size: 512,
-                    path: temp_dir.path().join("model2.bin"),
-                }],
-            ),
-        ],
-    };
+    // Create a ModelIndex and test operations on it
+    let model_index = ModelIndex::new(index_file_path.clone());
 
-    // Serialize to file
-    let json = serde_json::to_string_pretty(&original_index)?;
-    fs::write(&index_file_path, json)?;
+    // Test with empty index (no file exists)
+    let models = model_index.models()?;
+    assert_eq!(models.len(), 0);
 
-    // Deserialize from file
-    let loaded_index = ModelIndex::try_from(index_file_path.as_path())?;
+    // Test adding a model
+    let test_model = ModelInfo::new(
+        "test-model",
+        vec![ModelFile {
+            size: 512,
+            path: temp_dir.path().join("model.bin"),
+        }],
+    );
 
-    assert_eq!(original_index.models.len(), loaded_index.models.len());
-    assert_eq!(
-        original_index.models[0].model_id,
-        loaded_index.models[0].model_id
+    model_index.add_model(test_model.clone())?;
+    let models = model_index.models()?;
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].model_id, "test-model");
+
+    // Test adding another model
+    let test_model2 = ModelInfo::new("test-model-2", vec![]);
+    model_index.add_model(test_model2)?;
+    let models = model_index.models()?;
+    assert_eq!(models.len(), 2);
+
+    // Test updating existing model
+    let updated_model = ModelInfo::new(
+        "test-model",
+        vec![ModelFile {
+            size: 1024,
+            path: temp_dir.path().join("updated_model.bin"),
+        }],
     );
-    assert_eq!(
-        original_index.models[1].model_id,
-        loaded_index.models[1].model_id
-    );
-    assert_eq!(
-        original_index.models[1].files.len(),
-        loaded_index.models[1].files.len()
-    );
+    model_index.add_model(updated_model)?;
+    let models = model_index.models()?;
+    assert_eq!(models.len(), 2); // Still 2 models
+
+    // Find the updated model
+    let updated = models.iter().find(|m| m.model_id == "test-model").unwrap();
+    assert_eq!(updated.files.len(), 1);
+    assert_eq!(updated.files[0].size, 1024);
+
+    Ok(())
+}
+
+#[test]
+fn test_model_index_with_existing_file() -> Result<()> {
+    let temp_dir = tempdir()?;
+    let index_file_path = temp_dir.path().join("model_index.json");
+
+    // Pre-populate the index file
+    let initial_data = r#"{
+        "models": [
+            {
+                "model_id": "existing-model",
+                "files": [
+                    {
+                        "size": 2048,
+                        "path": "/path/to/existing.bin"
+                    }
+                ]
+            }
+        ]
+    }"#;
+    fs::write(&index_file_path, initial_data)?;
+
+    let model_index = ModelIndex::new(index_file_path);
+    let models = model_index.models()?;
+
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].model_id, "existing-model");
+    assert_eq!(models[0].files.len(), 1);
+    assert_eq!(models[0].files[0].size, 2048);
 
     Ok(())
 }
@@ -221,12 +280,15 @@ async fn test_model_manager_concurrent_access() -> Result<()> {
 
     // Create a model index
     let index_path = models_dir.join("model_index.json");
-    let test_model = ModelInfo::new("concurrent-test-model", vec![]);
-    let index = ModelIndex {
-        models: vec![test_model],
-    };
-    let index_json = serde_json::to_string_pretty(&index)?;
-    fs::write(&index_path, index_json)?;
+    let index_data = r#"{
+        "models": [
+            {
+                "model_id": "concurrent-test-model",
+                "files": []
+            }
+        ]
+    }"#;
+    fs::write(&index_path, index_data)?;
 
     if let Ok(manager) = ModelManagerBuilder::new()
         .with_models_dir(models_dir)
