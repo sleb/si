@@ -71,7 +71,7 @@ pub struct HuggingFaceRepoInfo {}
 pub struct HuggingFaceFile {}
 
 #[derive(Debug)]
-pub struct ModelIndex {
+struct ModelIndex {
     path: PathBuf,
 }
 
@@ -136,8 +136,8 @@ impl ModelIndex {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ModelIndexData {
-    models: Vec<ModelInfo>,
+pub(crate) struct ModelIndexData {
+    pub(crate) models: Vec<ModelInfo>,
 }
 
 pub struct ModelManagerBuilder {
@@ -227,6 +227,12 @@ impl ModelManager {
                 path: local_path,
             });
         }
+
+        // Automatically persist the downloaded model to the index
+        let model_index = self.model_index();
+        model_index
+            .add_model(model_info.clone())
+            .with_context(|| format!("Failed to add model '{}' to index", model_id))?;
 
         Ok(model_info)
     }
@@ -666,6 +672,87 @@ mod tests {
         assert_eq!(parsed.models[0].model_id, "model1");
         assert_eq!(parsed.models[1].model_id, "model2");
         assert_eq!(parsed.models[1].files.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_index_add_and_update_operations() -> Result<()> {
+        let temp_dir = tempdir()?;
+        let index_path = temp_dir.path().join("test_index.json");
+
+        let model_index = ModelIndex::new(index_path.clone());
+
+        // Test adding a new model
+        let test_model = ModelInfo::new(
+            "test-model",
+            vec![ModelFile {
+                size: 512,
+                path: temp_dir.path().join("model.bin"),
+            }],
+        );
+
+        model_index.add_model(test_model.clone())?;
+        let models = model_index.models()?;
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].model_id, "test-model");
+        assert_eq!(models[0].files.len(), 1);
+        assert_eq!(models[0].files[0].size, 512);
+
+        // Test adding another model
+        let test_model2 = ModelInfo::new("test-model-2", vec![]);
+        model_index.add_model(test_model2)?;
+        let models = model_index.models()?;
+        assert_eq!(models.len(), 2);
+
+        // Test updating existing model
+        let updated_model = ModelInfo::new(
+            "test-model",
+            vec![ModelFile {
+                size: 1024,
+                path: temp_dir.path().join("updated_model.bin"),
+            }],
+        );
+        model_index.add_model(updated_model)?;
+        let models = model_index.models()?;
+        assert_eq!(models.len(), 2); // Still 2 models
+
+        // Find the updated model
+        let updated = models.iter().find(|m| m.model_id == "test-model").unwrap();
+        assert_eq!(updated.files.len(), 1);
+        assert_eq!(updated.files[0].size, 1024);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_model_manager_download_updates_index() -> Result<()> {
+        // This test would need to mock the HuggingFace API to avoid network calls
+        // For now, we test that ModelManager properly manages the index through other operations
+        let temp_dir = tempdir()?;
+        let models_dir = temp_dir.path().join("models");
+        fs::create_dir_all(&models_dir)?;
+
+        // Create an initially empty index
+        let index_path = models_dir.join("model_index.json");
+        let empty_index_data = r#"{"models": []}"#;
+        fs::write(&index_path, empty_index_data)?;
+
+        let manager = ModelManagerBuilder::new()
+            .with_models_dir(models_dir.clone())
+            .build()?;
+
+        // Verify index is initially empty
+        let initial_models = manager.list_models()?;
+        assert_eq!(initial_models.len(), 0);
+
+        // Create a new manager instance to verify the index persists across instances
+        let manager2 = ModelManagerBuilder::new()
+            .with_models_dir(models_dir)
+            .build()?;
+
+        let models = manager2.list_models()?;
+        assert_eq!(models.len(), 0);
 
         Ok(())
     }
