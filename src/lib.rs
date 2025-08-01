@@ -5,4 +5,4 @@
 
 pub mod models;
 
-pub use models::{ModelFile, ModelInfo, ModelManager, ModelManagerBuilder};
+pub use models::{ModelFile, ModelInfo, ModelManager, ModelManagerBuilder, SyncResult};

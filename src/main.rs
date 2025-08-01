@@ -53,6 +53,12 @@ enum ModelCommands {
         /// Name of the model to show
         name: String,
     },
+    /// Sync local models with the index
+    Sync {
+        /// Perform a dry run without making changes
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -148,6 +154,22 @@ async fn handle_model_command(action: ModelCommands) -> Result<()> {
         ModelCommands::Show { name } => {
             println!("Showing details for model: {}", name);
             // TODO: Implement model show logic
+        }
+        ModelCommands::Sync { dry_run } => {
+            let sync_result = model_manager.sync_models(dry_run).await?;
+            if dry_run {
+                println!(
+                    "Dry run completed. Found {} discrepancies.",
+                    sync_result.discrepancies_count()
+                );
+            } else {
+                println!("Sync completed successfully.");
+            }
+
+            // Display sync results
+            for message in sync_result.messages() {
+                println!("{}", message);
+            }
         }
     }
     Ok(())
@@ -279,6 +301,8 @@ mod tests {
         let _show = ModelCommands::Show {
             name: "test".to_string(),
         };
+        let _sync = ModelCommands::Sync { dry_run: false };
+        let _sync_dry = ModelCommands::Sync { dry_run: true };
     }
 
     #[test]

@@ -142,11 +142,11 @@ fn test_model_index_persistence() -> Result<()> {
     let index_file_path = temp_dir.path().join("model_index.json");
 
     // Create first ModelManager instance
-    let manager1 = ModelManagerBuilder::new()
+    let _manager1 = ModelManagerBuilder::new()
         .with_models_dir(temp_dir.path().to_path_buf())
         .build()?;
 
-    let model1 = ModelInfo::new(
+    let _model1 = ModelInfo::new(
         "test-model-1",
         vec![
             ModelFile {
@@ -160,7 +160,7 @@ fn test_model_index_persistence() -> Result<()> {
         ],
     );
 
-    let model2 = ModelInfo::new(
+    let _model2 = ModelInfo::new(
         "test-model-2",
         vec![ModelFile {
             size: 2048,
@@ -228,7 +228,7 @@ fn test_model_index_persistence() -> Result<()> {
 #[test]
 fn test_model_index_operations() -> Result<()> {
     let temp_dir = tempdir()?;
-    let index_file_path = temp_dir.path().join("model_index.json");
+    let _index_file_path = temp_dir.path().join("model_index.json");
 
     // Create a ModelManager and test operations through it
     let manager = ModelManagerBuilder::new()

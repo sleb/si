@@ -111,8 +111,9 @@ fn test_model_list_no_models() {
     cmd.args(["model", "list"]);
 
     // Set a temporary directory as the data directory
+    // On macOS, the directories crate uses HOME instead of XDG_DATA_HOME
     let temp_dir = tempdir().unwrap();
-    cmd.env("XDG_DATA_HOME", temp_dir.path());
+    cmd.env("HOME", temp_dir.path());
 
     let output = cmd.output().expect("Failed to execute command");
 
