@@ -12,10 +12,9 @@ async fn test_model_manager_creation() -> Result<()> {
     let _manager = ModelManagerBuilder::new()
         .with_models_dir(models_dir.clone())
         .build()
-        .map(|mgr| {
+        .inspect(|_mgr| {
             // If manager creation succeeds, create the directory like ModelManager::new() does
             std::fs::create_dir_all(&models_dir).expect("Failed to create models dir");
-            mgr
         });
 
     // The directory should exist if manager creation was successful

@@ -144,15 +144,15 @@ async fn handle_model_command(action: ModelCommands) -> Result<()> {
         }
         ModelCommands::Download { name } => {
             let model_info = model_manager.download_model(&name).await?;
-            debug!("Downloaded model: {:?}", model_info);
+            debug!("Downloaded model: {model_info:?}");
             println!("Model {name} downloaded successfully.");
         }
         ModelCommands::Delete { name } => {
-            println!("Deleting model: {}", name);
+            println!("Deleting model: {name}");
             // TODO: Implement model deletion logic
         }
         ModelCommands::Show { name } => {
-            println!("Showing details for model: {}", name);
+            println!("Showing details for model: {name}");
             // TODO: Implement model show logic
         }
         ModelCommands::Sync { dry_run } => {
@@ -168,7 +168,7 @@ async fn handle_model_command(action: ModelCommands) -> Result<()> {
 
             // Display sync results
             for message in sync_result.messages() {
-                println!("{}", message);
+                println!("{message}");
             }
         }
     }
@@ -182,11 +182,11 @@ fn handle_config_command(action: ConfigCommands) -> Result<()> {
             // TODO: Implement config show logic
         }
         ConfigCommands::Set { key, value } => {
-            println!("Setting config: {} = {}", key, value);
+            println!("Setting config: {key} = {value}");
             // TODO: Implement config set logic
         }
         ConfigCommands::Get { key } => {
-            println!("Getting config value for: {}", key);
+            println!("Getting config value for: {key}");
             // TODO: Implement config get logic
         }
         ConfigCommands::Reset => {
@@ -205,8 +205,8 @@ fn handle_image_command(action: ImageCommands) -> Result<()> {
             input,
             output,
         } => {
-            println!("Generating image with prompt: {}", prompt);
-            println!("Using model: {}", model);
+            println!("Generating image with prompt: {prompt}");
+            println!("Using model: {model}");
             println!("Input image: {}", input.display());
             println!("Output image: {}", output.display());
             // TODO: Implement image generation logic
@@ -221,7 +221,7 @@ trait LogError<T> {
 
 impl<T, E: Debug> LogError<T> for Result<T, E> {
     fn log_error(self) -> Self {
-        self.inspect_err(|e| debug!("{:?}", e))
+        self.inspect_err(|e| debug!("{e:?}"))
     }
 }
 

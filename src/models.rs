@@ -79,6 +79,12 @@ pub struct SyncResult {
     models_in_index_but_missing_locally: Vec<String>,
 }
 
+impl Default for SyncResult {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SyncResult {
     pub fn new() -> Self {
         Self {
@@ -191,6 +197,12 @@ pub struct ModelManagerBuilder {
     hf_api: Option<Api>,
 }
 
+impl Default for ModelManagerBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModelManagerBuilder {
     pub fn new() -> Self {
         Self {
@@ -278,7 +290,7 @@ impl ModelManager {
         let model_index = self.model_index();
         model_index
             .add_model(model_info.clone())
-            .with_context(|| format!("Failed to add model '{}' to index", model_id))?;
+            .with_context(|| format!("Failed to add model '{model_id}' to index"))?;
 
         Ok(model_info)
     }
@@ -301,10 +313,8 @@ impl ModelManager {
         // Find models that exist locally but aren't in the index
         for local_model_id in &local_model_ids {
             if !indexed_model_ids.contains(local_model_id) {
-                sync_result.add_message(format!(
-                    "Found local model '{}' not in index",
-                    local_model_id
-                ));
+                sync_result
+                    .add_message(format!("Found local model '{local_model_id}' not in index"));
 
                 if !dry_run {
                     // Try to reconstruct ModelInfo from HF cache files
@@ -313,12 +323,11 @@ impl ModelManager {
                             let model_index = self.model_index();
                             model_index.add_model(model_info)?;
                             sync_result.add_model_to_index(local_model_id.clone());
-                            sync_result.add_message(format!("Added '{}' to index", local_model_id));
+                            sync_result.add_message(format!("Added '{local_model_id}' to index"));
                         }
                         Err(e) => {
                             sync_result.add_message(format!(
-                                "Failed to add '{}' to index: {}",
-                                local_model_id, e
+                                "Failed to add '{local_model_id}' to index: {e}"
                             ));
                         }
                     }
@@ -333,8 +342,7 @@ impl ModelManager {
         for indexed_model_id in &indexed_model_ids {
             if !local_model_ids.contains(indexed_model_id) {
                 sync_result.add_message(format!(
-                    "Model '{}' in index but missing in HF cache",
-                    indexed_model_id
+                    "Model '{indexed_model_id}' in index but missing in HF cache"
                 ));
                 sync_result.mark_model_missing_locally(indexed_model_id.clone());
             }
@@ -504,7 +512,7 @@ impl ModelManager {
 
             if snapshot_path.is_dir() {
                 // Scan the snapshot directory for model files
-                self.collect_files_recursively(&snapshot_path, files)?;
+                Self::collect_files_recursively(&snapshot_path, files)?;
                 // Usually we only need one snapshot, so break after finding the first one
                 if !files.is_empty() {
                     break;
@@ -514,7 +522,7 @@ impl ModelManager {
         Ok(())
     }
 
-    fn collect_files_recursively(&self, dir: &Path, files: &mut Vec<ModelFile>) -> Result<()> {
+    fn collect_files_recursively(dir: &Path, files: &mut Vec<ModelFile>) -> Result<()> {
         let entries = fs::read_dir(dir)?;
         for entry in entries {
             let entry = entry?;
@@ -528,7 +536,7 @@ impl ModelManager {
                 });
             } else if path.is_dir() {
                 // Recursively scan subdirectories
-                self.collect_files_recursively(&path, files)?;
+                Self::collect_files_recursively(&path, files)?;
             }
         }
         Ok(())
@@ -1085,7 +1093,7 @@ mod tests {
         // Now that we scan the real HF cache, we might find models
         // The test just verifies the operation completes successfully
         // We can't predict the exact count since it depends on the user's HF cache
-        assert!(sync_result.messages().len() > 0);
+        assert!(!sync_result.messages().is_empty());
 
         Ok(())
     }
@@ -1242,9 +1250,9 @@ mod tests {
         // No assertion needed here, successful execution is the test
 
         // If there were any models found and added, verify the operation worked
-        if sync_result.models_added_to_index.len() > 0 {
+        if !sync_result.models_added_to_index.is_empty() {
             let models_after_sync = manager.list_models()?;
-            assert!(models_after_sync.len() > 0);
+            assert!(!models_after_sync.is_empty());
 
             // Run sync again - should show fewer or no discrepancies
             let sync_result2 = manager.sync_models(false).await?;
