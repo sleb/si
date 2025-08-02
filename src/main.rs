@@ -1,6 +1,6 @@
 use std::{fmt::Debug, path::PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 use log::debug;
@@ -127,19 +127,13 @@ async fn handle_model_command(action: ModelCommands) -> Result<()> {
             }
 
             for model in models {
-                println!("Model: {}", model.model_id);
-                println!("  Files:");
-                for file in &model.files {
-                    let file_name = file
-                        .path
-                        .file_name()
-                        .ok_or_else(|| anyhow!("Illegal file path: {}", file.path.display()))?;
-                    println!(
-                        "    - {} ({})",
-                        file_name.display(),
-                        humansize::format_size(file.size, humansize::DECIMAL)
-                    );
-                }
+                let total_size: u64 = model.files.iter().map(|f| f.size).sum();
+                println!(
+                    "{} ({} files - {})",
+                    model.model_id,
+                    model.files.iter().len(),
+                    humansize::format_size(total_size, humansize::DECIMAL)
+                );
             }
         }
         ModelCommands::Download { name } => {
