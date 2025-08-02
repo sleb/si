@@ -80,7 +80,22 @@ bench:
 
 # Check MSRV compatibility
 msrv:
-    cargo +1.70.0 test --verbose
+    #!/usr/bin/env bash
+    MSRV=$(./scripts/get-msrv.sh)
+    echo "Testing with MSRV: $MSRV"
+    cargo +$MSRV test --verbose
+
+# Show current MSRV
+msrv-show:
+    @./scripts/get-msrv.sh
+
+# Check if current Rust version meets MSRV requirement
+msrv-check:
+    @./scripts/get-msrv.sh --check
+
+# Validate MSRV format in Cargo.toml
+msrv-validate:
+    @./scripts/get-msrv.sh --validate
 
 # Watch for changes and run tests
 watch:
@@ -149,4 +164,4 @@ ci-local:
 
 # Make scripts executable
 make-scripts-executable:
-    chmod +x scripts/test.sh scripts/ci-local.sh
+    chmod +x scripts/test.sh scripts/ci-local.sh scripts/get-msrv.sh

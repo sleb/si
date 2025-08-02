@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use directories::ProjectDirs;
-use hf_hub::{api::tokio::Api, Cache};
+use hf_hub::{Cache, api::tokio::Api};
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -547,7 +547,7 @@ impl ModelManager {
 mod tests {
     use super::*;
     use std::io::Write;
-    use tempfile::{tempdir, NamedTempFile};
+    use tempfile::{NamedTempFile, tempdir};
 
     #[test]
     fn test_model_info_new() {

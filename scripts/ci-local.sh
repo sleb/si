@@ -59,12 +59,28 @@ fi
 RUST_VERSION=$(rustc --version | cut -d' ' -f2)
 info "Rust version: $RUST_VERSION"
 
-# Check for minimum Rust version (1.70.0)
+# Extract MSRV from Cargo.toml
+MSRV=$(grep '^rust-version' Cargo.toml | sed 's/rust-version = "\(.*\)"/\1/')
+if [ -z "$MSRV" ]; then
+    error "Could not extract rust-version from Cargo.toml"
+    exit 1
+fi
+
+info "Required MSRV: $MSRV"
+
+# Check for minimum Rust version
 RUST_MAJOR=$(echo $RUST_VERSION | cut -d'.' -f1)
 RUST_MINOR=$(echo $RUST_VERSION | cut -d'.' -f2)
+RUST_PATCH=$(echo $RUST_VERSION | cut -d'.' -f3)
 
-if [ "$RUST_MAJOR" -lt 1 ] || ([ "$RUST_MAJOR" -eq 1 ] && [ "$RUST_MINOR" -lt 70 ]); then
-    error "Rust 1.70.0 or later is required. Current version: $RUST_VERSION"
+MSRV_MAJOR=$(echo $MSRV | cut -d'.' -f1)
+MSRV_MINOR=$(echo $MSRV | cut -d'.' -f2)
+MSRV_PATCH=$(echo $MSRV | cut -d'.' -f3)
+
+if [ "$RUST_MAJOR" -lt "$MSRV_MAJOR" ] || \
+   ([ "$RUST_MAJOR" -eq "$MSRV_MAJOR" ] && [ "$RUST_MINOR" -lt "$MSRV_MINOR" ]) || \
+   ([ "$RUST_MAJOR" -eq "$MSRV_MAJOR" ] && [ "$RUST_MINOR" -eq "$MSRV_MINOR" ] && [ "$RUST_PATCH" -lt "$MSRV_PATCH" ]); then
+    error "Rust $MSRV or later is required. Current version: $RUST_VERSION"
     exit 1
 fi
 
