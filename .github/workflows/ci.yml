@@ -17,16 +17,19 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        rust: [stable, beta]
+        rust: ["1.88.0", "1.89.0-beta"]
         exclude:
           - os: windows-latest
-            rust: beta
+            rust: "1.89.0-beta"
           - os: macos-latest
-            rust: beta
+            rust: "1.89.0-beta"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -64,9 +67,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.88.0"
           components: rustfmt, clippy
 
       - name: Cache dependencies
@@ -94,8 +101,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -114,8 +126,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -130,8 +147,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.88.0"
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -155,6 +177,9 @@ jobs:
           MSRV=$(grep '^rust-version' Cargo.toml | sed 's/rust-version = "\(.*\)"/\1/')
           echo "version=$MSRV" >> $GITHUB_OUTPUT
           echo "Using MSRV: $MSRV"
+
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
 
       - name: Install Rust toolchain (MSRV)
         uses: dtolnay/rust-toolchain@master
@@ -189,9 +214,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Clean rustup downloads cache
+        run: rm -rf ~/.rustup/downloads/*
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: "1.88.0"
           targets: ${{ matrix.target }}
 
       - name: Cache dependencies
